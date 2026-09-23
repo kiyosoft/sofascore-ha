@@ -1,0 +1,11 @@
+{
+  "domain": "sofascore",
+  "name": "SofaScore",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/apdmatos/sofascore-api",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}

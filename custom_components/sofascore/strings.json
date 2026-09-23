@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Find your team",
+        "description": "Enter a team name (e.g. Benfica) or a numeric SofaScore team ID.",
+        "data": { "query": "Team name or ID" }
+      },
+      "select": {
+        "title": "Select team",
+        "data": { "team_id": "Team" }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach SofaScore. It may be blocking requests from your network.",
+      "no_teams": "No teams found for that search."
+    },
+    "abort": {
+      "already_configured": "This team is already configured."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "next_match": { "name": "Next match" },
+      "last_match": { "name": "Last match" },
+      "live_match": { "name": "Live match" },
+      "league_position": { "name": "League position" }
+    }
+  }
+}
