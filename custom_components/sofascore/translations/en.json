@@ -21,6 +21,7 @@
   },
   "entity": {
     "sensor": {
+      "game": { "name": "Game" },
       "next_match": { "name": "Next match" },
       "last_match": { "name": "Last match" },
       "live_match": { "name": "Live match" },

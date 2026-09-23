@@ -22,7 +22,14 @@ from .const import (
     STATUS_LIVE,
     STATUS_NOT_STARTED,
 )
-from .helpers import event_status, event_ts, summarize_event
+from .helpers import (
+    event_status,
+    event_ts,
+    featured_match,
+    format_last_play,
+    summarize_event,
+    tracker_attributes,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,7 +50,7 @@ class SofascoreCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._team: dict[str, Any] | None = None
         self._last_live: dict[str, Any] | None = None
         self._first_run = True
-        self._standings_cache: dict[tuple[int, int], tuple[float, dict | None]] = {}
+        self._standings_cache: dict[tuple[int, int], tuple[float, dict[int, dict]]] = {}
 
     # ------------------------------------------------------------------ update
 
@@ -66,8 +73,17 @@ class SofascoreCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         next_event = min(upcoming, key=event_ts, default=None)
 
         match_ended = await self._process_live(live, by_id)
-        standings = await self._get_standings(
-            [last_event, next_event, *sorted(finished, key=event_ts, reverse=True)],
+        game_state, featured = featured_match(live, last_event, next_event, time.time())
+        if featured:
+            featured = await self._enrich(featured)
+        last_play = None
+        if game_state in ("IN", "POST") and featured:
+            try:
+                last_play = format_last_play(await self.api.get_incidents(featured["id"]))
+            except SofascoreError as err:
+                _LOGGER.debug("Could not fetch incidents: %s", err)
+        table = await self._get_standings(
+            [featured, last_event, next_event, *sorted(finished, key=event_ts, reverse=True)],
             force=match_ended,
         )
         self._adjust_interval(live, next_event)
@@ -78,8 +94,21 @@ class SofascoreCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "last_event": last_event,
             "next_event": next_event,
             "live_event": live,
-            "standings": standings,
+            "standings": table.get(self.team_id),
+            "game_state": game_state,
+            "game_attrs": tracker_attributes(
+                game_state, featured, self._team, table, last_play, time.time()
+            ),
         }
+
+    async def _enrich(self, event: dict[str, Any]) -> dict[str, Any]:
+        """List payloads omit the stadium. One detail call fills it in."""
+        try:
+            detail = await self.api.get_event(event["id"])
+        except SofascoreError as err:
+            _LOGGER.debug("Event detail failed: %s", err)
+            return event
+        return detail or event
 
     def _adjust_interval(self, live: dict | None, next_event: dict | None) -> None:
         soon = (
@@ -170,8 +199,8 @@ class SofascoreCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     # -------------------------------------------------------------- standings
 
-    async def _get_standings(self, candidates: list[dict | None], force: bool) -> dict | None:
-        """Find the team's row in the first league table among recent events."""
+    async def _get_standings(self, candidates: list[dict | None], force: bool) -> dict[int, dict]:
+        """First league table that contains this team, indexed by team id."""
         seen: set[tuple[int, int]] = set()
         for ev in candidates:
             if not ev:
@@ -183,12 +212,12 @@ class SofascoreCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if len(seen) >= 3:  # don't hammer the API looking through cup games
                 break
             seen.add((ut, season))
-            row = await self._standings_for(ut, season, force)
-            if row:
-                return row
-        return None
+            table = await self._standings_for(ut, season, force)
+            if self.team_id in table:
+                return table
+        return {}
 
-    async def _standings_for(self, ut: int, season: int, force: bool) -> dict | None:
+    async def _standings_for(self, ut: int, season: int, force: bool) -> dict[int, dict]:
         key = (ut, season)
         cached = self._standings_cache.get(key)
         now = time.monotonic()
@@ -201,19 +230,21 @@ class SofascoreCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data = {}
         except SofascoreError as err:
             _LOGGER.debug("Standings fetch failed: %s", err)
-            return cached[1] if cached else None
+            return cached[1] if cached else {}
 
-        row = self._find_row(data)
-        self._standings_cache[key] = (now, row)
-        return row
+        index = self._index_rows(data)
+        self._standings_cache[key] = (now, index)
+        return index
 
-    def _find_row(self, data: dict[str, Any]) -> dict | None:
+    def _index_rows(self, data: dict[str, Any]) -> dict[int, dict]:
+        indexed: dict[int, dict] = {}
         for table in data.get("standings", []):
             for r in table.get("rows", []):
-                if (r.get("team") or {}).get("id") != self.team_id:
+                tid = (r.get("team") or {}).get("id")
+                if tid is None or tid in indexed:
                     continue
                 sf, sa = r.get("scoresFor") or 0, r.get("scoresAgainst") or 0
-                return {
+                indexed[tid] = {
                     "position": r.get("position"),
                     "points": r.get("points"),
                     "matches": r.get("matches"),
@@ -227,4 +258,4 @@ class SofascoreCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "table": table.get("name"),
                     "tournament": ((table.get("tournament") or {}).get("uniqueTournament") or {}).get("name"),
                 }
-        return None
+        return indexed

@@ -53,6 +53,13 @@ class SofascoreSensorDescription(SensorEntityDescription):
 
 SENSORS: tuple[SofascoreSensorDescription, ...] = (
     SofascoreSensorDescription(
+        key="game",
+        translation_key="game",
+        icon="mdi:scoreboard",
+        value_fn=lambda c: c.data.get("game_state") or "NOT_FOUND",
+        attrs_fn=lambda c: c.data.get("game_attrs"),
+    ),
+    SofascoreSensorDescription(
         key="next_match",
         translation_key="next_match",
         icon="mdi:calendar-clock",

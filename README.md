@@ -13,6 +13,7 @@ Follow a team (any sport SofaScore covers) and get match updates in Home Assista
 ## Entities (one device per team)
 | Entity | State | Useful attributes |
 |---|---|---|
+| `sensor.<team>_game` | `PRE`, `IN`, `POST`, or `NOT_FOUND` | Same shape as [Team Tracker](https://github.com/vasqued2/ha-teamtracker): scores, logos, colors, kickoff, venue, clock. Use it with the Team Tracker card. |
 | `sensor.<team>_next_match` | kickoff time | opponent, venue (home/away), tournament, round, opponent_logo |
 | `sensor.<team>_last_match` | e.g. `W 2-1` | score, result, opponent, tournament |
 | `sensor.<team>_live_match` | `1st half`, `Halftime`… or `Not playing` | score, minute, opponent |
