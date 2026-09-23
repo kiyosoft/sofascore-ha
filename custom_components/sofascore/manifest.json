@@ -6,6 +6,6 @@
   "documentation": "https://github.com/apdmatos/sofascore-api",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "requirements": [],
-  "version": "0.1.0"
+  "requirements": ["curl_cffi>=0.10"],
+  "version": "0.1.1"
 }

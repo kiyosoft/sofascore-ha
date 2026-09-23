@@ -1,30 +1,29 @@
 """Minimal async client for the (unofficial) SofaScore API."""
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 from urllib.parse import quote
 
-import aiohttp
+from curl_cffi.requests import AsyncSession
+from curl_cffi.requests.exceptions import RequestException
 
 _LOGGER = logging.getLogger(__name__)
 
-# SofaScore serves the same API from both hosts; try the second if the first is blocked.
+# Same API on both hosts. www is what the site itself calls.
 BASE_URLS = (
-    "https://api.sofascore.com/api/v1",
     "https://www.sofascore.com/api/v1",
+    "https://api.sofascore.com/api/v1",
 )
 
+# User-Agent comes from the Chrome impersonation profile. Overriding it
+# mismatches the TLS fingerprint and SofaScore answers 403.
 HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/126.0 Safari/537.36"
-    ),
     "Accept": "application/json, text/plain, */*",
     "Accept-Language": "en-US,en;q=0.9",
     "Origin": "https://www.sofascore.com",
     "Referer": "https://www.sofascore.com/",
+    "X-Requested-With": "XMLHttpRequest",
 }
 
 
@@ -39,28 +38,33 @@ class SofascoreNotFound(SofascoreError):
 class SofascoreApi:
     """Thin wrapper around the endpoints this integration needs."""
 
-    def __init__(self, session: aiohttp.ClientSession, timeout: int = 15) -> None:
-        self._session = session
-        self._timeout = aiohttp.ClientTimeout(total=timeout)
+    def __init__(self, timeout: int = 15) -> None:
+        self._session = AsyncSession(
+            impersonate="chrome", headers=HEADERS, timeout=timeout
+        )
+
+    async def close(self) -> None:
+        await self._session.close()
 
     async def _get(self, path: str) -> dict[str, Any]:
         last_err: SofascoreError | None = None
         for base in BASE_URLS:
             url = f"{base}{path}"
             try:
-                async with self._session.get(
-                    url, headers=HEADERS, timeout=self._timeout
-                ) as resp:
-                    if resp.status == 404:
-                        raise SofascoreNotFound(path)
-                    if resp.status != 200:
-                        last_err = SofascoreError(f"HTTP {resp.status} from {url}")
-                        _LOGGER.debug("%s", last_err)
-                        continue
-                    return await resp.json(content_type=None)
-            except SofascoreNotFound:
-                raise
-            except (aiohttp.ClientError, asyncio.TimeoutError, ValueError) as err:
+                resp = await self._session.get(url)
+            except RequestException as err:
+                last_err = SofascoreError(f"{url}: {err!r}")
+                _LOGGER.debug("%s", last_err)
+                continue
+            if resp.status_code == 404:
+                raise SofascoreNotFound(path)
+            if resp.status_code != 200:
+                last_err = SofascoreError(f"HTTP {resp.status_code} from {url}")
+                _LOGGER.debug("%s body=%s", last_err, resp.text[:200])
+                continue
+            try:
+                return resp.json()
+            except ValueError as err:
                 last_err = SofascoreError(f"{url}: {err!r}")
                 _LOGGER.debug("%s", last_err)
         raise last_err or SofascoreError(path)
@@ -68,7 +72,7 @@ class SofascoreApi:
     # --- teams -------------------------------------------------------------
 
     async def search_teams(self, query: str) -> list[dict[str, Any]]:
-        data = await self._get(f"/search/all?q={quote(query)}")
+        data = await self._get(f"/search/all?q={quote(query)}&page=0")
         return [
             r["entity"]
             for r in data.get("results", [])

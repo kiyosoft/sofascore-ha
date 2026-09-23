@@ -6,7 +6,6 @@ from typing import Any
 import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     SelectOptionDict,
     SelectSelector,
@@ -40,7 +39,7 @@ class SofascoreConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
         if user_input is not None:
             query = user_input[CONF_QUERY].strip()
-            api = SofascoreApi(async_get_clientsession(self.hass))
+            api = SofascoreApi()
             try:
                 if query.isdigit():
                     team = await api.get_team(int(query))
@@ -51,6 +50,8 @@ class SofascoreConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._teams = []
             except SofascoreError:
                 errors["base"] = "cannot_connect"
+            finally:
+                await api.close()
 
             if not errors:
                 if not self._teams:

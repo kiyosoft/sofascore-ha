@@ -58,9 +58,9 @@ automation:
 ```
 
 ## Caveats
-SofaScore's API is unofficial and undocumented; it can change without notice and may
-return HTTP 403 (Cloudflare) to some networks, especially cloud/VPS IPs. Home connections
-usually work. Enable debug logging to see raw errors:
+SofaScore's API is unofficial. Plain Python HTTP clients get HTTP 403; this
+integration impersonates Chrome via `curl_cffi`. A datacenter IP can still be
+blocked. Enable debug logging to see raw errors:
 
 ```yaml
 logger:
